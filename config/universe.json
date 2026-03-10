@@ -1,0 +1,10 @@
+{
+  "symbols": [
+    "AAPL",
+    "MSFT",
+    "GOOG"
+  ],
+  "base_config": "config/optimization_ga.json",
+  "symbols_parallel": 3,
+  "total_workers": 15
+}

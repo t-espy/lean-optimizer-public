@@ -1,0 +1,222 @@
+# lean-optimizer — Parallel Optimization Engine for QuantConnect LEAN
+
+Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline. 153 passing tests.
+
+## Performance
+
+Measured on a 7-parameter space (679,140 grid points), 15 parallel workers, 20-core machine. Both runs use the same strategy, parameter ranges, date range, and data.
+
+### lean-optimizer vs LEAN CLI grid search
+
+| | LEAN CLI (`lean optimize --strategy "grid search"`) | lean-optimizer (GA standalone) |
+|---|---|---|
+| **Search strategy** | Exhaustive grid (all 679,140 points) | Incremental genetic algorithm |
+| **Evaluations** | 679,140 | 611 |
+| **Throughput (15 workers)** | 2.15 evals/sec | 3.82 evals/sec |
+| **Measured wall time** | 1,772 evals in 825s (extrapolated: ~88 hours for full grid) | **2m 40s** |
+| **Search efficiency** | 1x | **1,112x fewer evaluations** |
+
+The two advantages are independent and compound:
+
+1. **Persistent harness** — eliminates .NET startup and LEAN engine init overhead per evaluation, yielding ~1.8x higher throughput at the container level.
+2. **Smart search** — the GA converged in 611 evaluations (early-stopped at generation 42) instead of exhaustively evaluating all 679,140 grid points — **1,112x fewer evaluations**.
+
+Combined: what takes LEAN CLI's grid search an estimated **~88 hours** completes in **under 3 minutes**.
+
+## Architecture
+
+The pipeline searches the parameter space via a configurable sequence of stages, all sharing a common `BatchRunner` interface and deduplication cache:
+
+1. **Latin Hypercube Sampling (LHS)** — space-filling initial exploration (default 150 samples)
+2. **Bayesian Optimization (Optuna TPE)** — directed search with batch ask/tell (default 250 trials)
+3. **Incremental Genetic Algorithm** — population-based refinement with worst replacement and early stopping
+4. **Local Grid Search** — Chebyshev-distance neighborhood refinement around top candidates
+
+Stages can be enabled/disabled independently. GA can run standalone or seeded from prior stages.
+
+Walk-forward optimization (true IS/OOS parameter validation) is a planned future stage. The current pipeline produces optimized parameters with checkpoint/resume support; out-of-sample validation is left to the user's preferred methodology.
+
+### Persistent Harness
+
+The core innovation: each Docker container runs a long-lived `dotnet /Harness/LeanHarness.dll` process. The harness reads JSON requests from stdin, runs backtests with full LEAN state reset between runs, and writes JSON responses to stdout. This eliminates per-eval .NET startup, assembly loading, and LEAN engine initialization overhead — measured at ~1.8x higher throughput per worker compared to LEAN CLI's per-backtest container execution.
+
+```
+Python → harness stdin:  {"id": "<uuid>", "config_path": "/path/to/config.json"}
+Harness → Python stdout: {"id": "<uuid>", "status": "complete"}
+```
+
+`Console.Out` is redirected to stderr inside the harness so LEAN logging doesn't corrupt the JSON protocol. On eval error, the harness logs the error and continues — it does not exit. On stdin EOF, it exits cleanly.
+
+## Requirements
+
+**Infrastructure you provide:**
+
+- **Docker** with a LEAN engine image (e.g., `quantconnect/lean:latest` or a custom build). Set `LEAN_IMAGE` in `.env`.
+- **QuantConnect LEAN source** — a local clone with pre-built DLLs. The harness `.csproj` references LEAN DLLs via relative path (`../../../LeanCode/Lean/Launcher/bin/Debug/`). Adjust the `HintPath` entries in `harness/LeanHarness/LeanHarness.csproj` to match your LEAN install location.
+- **Market data** — LEAN-format data on a fast filesystem. A tmpfs/RAM disk is strongly recommended for parallel workloads. Set `LEAN_DATA_HOST_PATH` in `.env`.
+- **A C# strategy project** — a directory containing `.cs` and `.csproj` files that compile against QuantConnect. Pass via `--strategy-path`.
+- **Python 3.12+**
+- **.NET 8.0+** — for compiling the harness and your strategy
+- A multi-core machine with sufficient RAM for parallel workers (tested on 20-core/128GB)
+
+**Setup:**
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # edit all paths for your environment
+```
+
+**Environment variables** (in `.env` — see `.env.example`):
+
+| Variable | Purpose |
+|----------|---------|
+| `LEAN_IMAGE` | Docker image for LEAN engine containers |
+| `LEAN_DATA_HOST_PATH` | Host path to LEAN-format market data (mounted read-only into containers) |
+| `LEAN_WORKSPACE` | Host path to your LEAN workspace (for algorithm class auto-detection) |
+| `RESULTS_SCRATCH_PATH` | Scratch directory for per-eval results (default: `./results`) |
+| `WORKER_COUNT` | Default parallel worker count (overridden by `--worker-count` or config) |
+
+## Usage
+
+```bash
+# Optimize a strategy (full pipeline)
+python main.py optimize --strategy-path /path/to/your_strategy --config config/optimization_ga.json --ticker AAPL
+
+# Run specific backtests
+python main.py backtest --strategy-path /path/to/your_strategy --param ticker=AAPL --param startDate=20250101 --param endDate=20251231
+
+# Multi-symbol universe optimization
+python main.py optimize-universe --strategy-path /path/to/your_strategy --universe config/universe.json
+
+# Multi-symbol backtests
+python main.py backtest-universe --strategy-path /path/to/your_strategy --universe config/backtest_universe.json
+```
+
+**Key flags:**
+- `--strategy-path PATH` — directory containing your C# strategy `.cs` and `.csproj` files
+- `--config PATH` — optimization config (fitness function, stage params, worker count)
+- `--ticker SYMBOL` — override `base_params.ticker` from CLI (eliminates per-symbol config files)
+- `--worker-count N` — parallel Docker containers (default from config or env)
+- `--resume` — resume from checkpoint (skips completed stages)
+- `--skip-compile` — skip strategy compilation (use cached artifacts)
+
+## Configuration
+
+**`config/optimization_ga.json`** — optimization config:
+
+| Key | Default | Controls |
+|-----|---------|----------|
+| `fitness.name` | `"calmar"` | Fitness function (registry lookup) |
+| `fitness.min_trades` | `100` | Minimum trade count for valid score |
+| `fitness.min_profit_factor` | `1.0` | Minimum profit factor for valid score |
+| `stages.lhs.n_samples` | `150` | Number of LHS exploration points |
+| `stages.bayesian.n_calls` | `250` | Total Bayesian optimization trials |
+| `stages.bayesian.batch_size` | `15` | Concurrent trials per Bayesian batch |
+| `stages.genetic_*.population_size` | `125` | GA population size |
+| `stages.genetic_*.n_generations` | `73` | Max GA generations |
+| `stages.genetic_*.batch_size` | `15` | Children generated per GA generation |
+| `stages.genetic_*.early_stopping_generations` | `15` | Plateau window for early stop |
+| `stages.genetic_*.early_stopping_min_delta` | `0.01` | Min improvement to avoid early stop |
+| `stages.genetic_*.crossover_prob` | `0.95` | Crossover probability |
+| `stages.genetic_*.mutation_prob` | `0.05` | Per-parameter mutation probability |
+| `stages.genetic_*.tournament_size` | `3` | Tournament selection pool size |
+| `stages.local_grid.top_n` | `5` | Candidates for neighborhood search |
+| `stages.local_grid.radius` | `1` | Chebyshev radius in grid steps |
+| `stages.local_grid.max_neighbors` | `200` | Cap on neighbor evaluations |
+| `worker_count` | `15` | Parallel Docker worker containers |
+
+**`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation.
+
+**Environment variables:** `LEAN_IMAGE`, `LEAN_DATA_HOST_PATH`, `LEAN_WORKSPACE`, `ARTIFACTS_CONTAINER_PATH`, `RESULTS_SCRATCH_PATH`, `WORKER_COUNT`. See `.env.example`.
+
+## Architecture Decisions
+
+These constraints are load-bearing. Respect them when extending.
+
+1. **Compile-once.** `optimizer/builder/compiler.py` hashes strategy source files. If the hash matches a cached build, compilation is skipped. Never compile per-evaluation.
+
+2. **Warm workers.** `WorkerPool` starts N long-lived Docker containers at init. Workers are acquired/released via a blocking queue — never create/destroy containers per backtest.
+
+3. **Persistent harness.** Each Docker container runs a long-lived `dotnet /Harness/LeanHarness.dll` process launched at container start via `subprocess.Popen(["docker", "exec", "-i", ...])`. The harness reads JSON requests from stdin, runs backtests with full LEAN state reset between runs, and writes JSON responses to stdout. This eliminates per-eval .NET startup, assembly loading, and LEAN engine init overhead (~1.8x throughput improvement vs LEAN CLI's per-backtest execution). The harness is compiled on the host and mounted read-only at `/Harness` — the Docker image is NOT modified.
+
+4. **Harness protocol.** Python → harness stdin: `{"id": "<uuid>", "config_path": "/path/to/config.json"}`. Harness → Python stdout: `{"id": "<uuid>", "status": "complete"}` or `{"id": "<uuid>", "status": "error", "message": "..."}`. `Console.Out` is redirected to stderr inside the harness so LEAN logging doesn't corrupt the JSON protocol. On eval error, the harness logs the error and continues the loop — it does not exit. On stdin EOF, the harness exits cleanly.
+
+5. **RAM drive.** Market data should live on a fast filesystem (tmpfs recommended). LEAN containers mount this read-only. Never copy data into containers.
+
+6. **Injected stages.** All pipeline stages implement `OptimizationStage` (see `optimizer/pipeline/base.py`). Stages receive a `BatchRunner` callable — they never touch Docker, workers, or compilation directly. New stages just implement `run(space, fitness_fn, batch_runner, previous_results)`.
+
+7. **Fitness registry.** `optimizer/fitness/registry.py` maps string names to fitness classes. Config specifies `"name": "calmar"`, the registry instantiates it. Add new fitness functions by subclassing `FitnessFunction` and registering.
+
+8. **Incremental GA.** `GeneticStage` uses worst-replacement (not generational). Children only enter the population if they beat the current worst member. Best fitness is monotonically non-decreasing. Early stopping exits when best hasn't improved by `min_delta` in N generations.
+
+9. **Checkpoint after every stage.** Pipeline saves atomic JSON checkpoints after each stage completes. Resume skips completed stages by positional+name match.
+
+10. **Per-eval JSONL logging.** `EvalLogger` writes one JSON line per evaluation to `runs/<timestamp>/<symbol>/evaluations.jsonl`. File is opened/closed per batch (no persistent handle). Params are filtered to tunable-only (excludes base_params like ticker, startDate, endDate). Shared timestamp across symbols in universe mode.
+
+## Project Structure
+
+```
+main.py                                  CLI entry point: batch/optimize/backtest subcommands
+config/base_config.json                  LEAN backtesting config template
+config/optimization_ga.json              Optimization config (fitness, stage params, worker count)
+config/parameter_space.json              Tunable parameter definitions (example: 3 params)
+
+harness/LeanHarness/Program.cs           Persistent LEAN harness: stdin/stdout JSON protocol, full state reset
+harness/LeanHarness/LeanHarness.csproj   Harness project file, references pre-built LEAN DLLs
+
+optimizer/fitness/base.py                Abstract FitnessFunction base class with score/compute
+optimizer/fitness/calmar.py              Calmar fitness: (net_pnl / max_drawdown) * log-trade penalty
+optimizer/fitness/trailing_stop.py       TrailingStop fitness: MFE efficiency + TS activity + ES penalty
+optimizer/fitness/registry.py            String-name -> fitness-class registry
+
+optimizer/pipeline/base.py               OptimizationStage ABC + BatchRunner protocol
+optimizer/pipeline/parameter_space.py    Parameter/ParameterSpace: grid values, LHS, neighbors, snap
+optimizer/pipeline/scoring.py            score_evaluation(): attach fitness score to Evaluation in-place
+optimizer/pipeline/lhs.py                LHS stage: space-filling initial exploration
+optimizer/pipeline/bayesian.py           Bayesian stage: Optuna TPE with batch ask/tell
+optimizer/pipeline/genetic.py            Incremental GA: tournament select, worst replacement, early stop
+optimizer/pipeline/local_grid.py         Local grid: neighbors around top-N from prior stages
+optimizer/pipeline/checkpoint.py         Atomic JSON checkpoint save/load for pipeline resume
+optimizer/pipeline/pipeline.py           OptimizationPipeline orchestrator: sequential stages + checkpoint
+
+optimizer/runner/evaluation.py           Evaluation dataclass: params, status, metrics, fitness, worker_id
+optimizer/runner/batch_runner.py         Parallel batch dispatch to WorkerPool via ThreadPoolExecutor
+optimizer/runner/backtest_runner.py      Backtest runner: copy full LEAN result JSON to backtests/
+
+optimizer/results/extractor.py           Parse LEAN result JSON -> ExtractedMetrics dataclass
+optimizer/results/collector.py           Verify result JSON exists, extract metrics, clean scratch dir
+
+optimizer/builder/compiler.py            Compile C# strategy in Docker with content-hash caching + harness build
+
+optimizer/docker/worker.py               Worker: persistent harness subprocess via stdin/stdout JSON
+optimizer/docker/pool.py                 WorkerPool: N warm containers with acquire/release queue
+
+optimizer/logging/eval_logger.py         Per-eval JSONL logger: writes fitness, metrics, params per evaluation
+optimizer/config/config_builder.py       Merge base LEAN config with per-eval parameter overrides
+
+scripts/ga_early_stop_analysis.py        GA convergence analysis: identify peak generation + plateau
+
+tests/                                   153 passing tests covering all modules
+```
+
+## Development Notes
+
+### Incremental GA replaces generational GA
+The old generational model (with elitism) was collapsing populations by gen ~26. The incremental model uses worst replacement — children only enter if they beat the current worst. Best fitness is monotonically non-decreasing. `_fingerprint()` provides O(1) deduplication. `stage_detail` for GA init batch is `"init"`, not `"gen_0"`.
+
+### Persistent harness design
+The harness uses LEAN's regression test reset sequence: `Config.Reset()`, `Composer.Instance.Reset()`, `SymbolCache.Clear()`, etc. — the same sequence LEAN's own test suite uses to run multiple backtests in one process. `Console.Out` redirect to stderr is critical — LEAN writes trace/debug output to Console.Out. A fresh `HarnessWorkerThread` is created per run because `Engine.Run()` disposes the worker thread. The `composer-dll-directory` config must point to the LEAN launcher bin directory inside the container for MEF assembly scanning.
+
+### NullLogHandler
+The harness implements `ILogHandler` with empty Trace/Debug/Error/Dispose methods. Set via `HARNESS_DEBUG=0` (default). With `HARNESS_DEBUG=1`, falls back to `ConsoleErrorLogHandler` for troubleshooting. Testing showed LEAN logging is NOT a performance bottleneck — suppressing all output produced no measurable improvement. Per-eval time is dominated by actual backtest computation.
+
+### Server GC rejected
+`DOTNET_gcServer=1` with `DOTNET_GCHeapCount=2` added 26s wall time. Workstation GC (default) wins for parallel single-threaded workers competing for cores — Server GC's parallel collection threads add contention.
+
+### Release build
+Strategy DLLs and harness compile with `Configuration=Release`. JIT cost is amortized across evals per worker, so R2R is unnecessary.
+
+## License
+
+MIT

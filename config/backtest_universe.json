@@ -1,0 +1,32 @@
+{
+    "symbols": [
+        "AAPL",
+        "MSFT"
+    ],
+    "symbols_parallel": 2,
+    "total_workers": 10,
+    "param_sets": {
+        "AAPL": [
+            {
+                "ticker": "AAPL",
+                "startDate": "20250101",
+                "endDate": "20251231",
+                "InitialCash": "100000",
+                "PositionSize": "10000",
+                "ParamA": "20",
+                "ParamB": "0.6"
+            }
+        ],
+        "MSFT": [
+            {
+                "ticker": "MSFT",
+                "startDate": "20250101",
+                "endDate": "20251231",
+                "InitialCash": "100000",
+                "PositionSize": "10000",
+                "ParamA": "30",
+                "ParamB": "0.5"
+            }
+        ]
+    }
+}

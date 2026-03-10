@@ -1,0 +1,35 @@
+{
+  "_comment": "Base GA standalone config — pass --ticker on CLI",
+  "parameter_space_file": "config/parameter_space.json",
+  "base_params": {
+    "startDate": "20250303",
+    "endDate": "20260227",
+    "InitialCash": "1000",
+    "PositionSize": "1000",
+    "CommissionPerShare": "0.004",
+    "WarmupBars": "70",
+    "EnableLogging": "0"
+  },
+  "fitness": {
+    "name": "calmar",
+    "min_trades": 10,
+    "min_profit_factor": 1.0
+  },
+  "stages": {
+    "genetic_standalone": {
+      "enabled": true,
+      "population_size": 125,
+      "n_generations": 73,
+      "crossover_prob": 0.95,
+      "mutation_prob": 0.05,
+      "tournament_size": 3,
+      "batch_size": 15,
+      "early_stopping_generations": 15,
+      "early_stopping_min_delta": 0.01,
+      "seed_from_previous": false,
+      "n_seeds": 0,
+      "random_state": 42
+    }
+  },
+  "worker_count": 15
+}

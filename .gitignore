@@ -1,0 +1,25 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Runtime outputs — local only, never push
+artifacts/*/
+results/*/
+backtests/*/
+logs/*
+runs/*/
+
+!logs/.gitkeep
+
+# Secrets
+.env
+
+# C# build artifacts
+bin/
+obj/
+
+# OS
+.DS_Store
