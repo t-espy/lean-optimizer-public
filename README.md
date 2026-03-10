@@ -84,14 +84,8 @@ cp .env.example .env  # edit all paths for your environment
 # Optimize a strategy (full pipeline)
 python main.py optimize --strategy-path /path/to/your_strategy --config config/optimization_ga.json --ticker AAPL
 
-# Run specific backtests
-python main.py backtest --strategy-path /path/to/your_strategy --param ticker=AAPL --param startDate=20250101 --param endDate=20251231
-
 # Multi-symbol universe optimization
 python main.py optimize-universe --strategy-path /path/to/your_strategy --universe config/universe.json
-
-# Multi-symbol backtests
-python main.py backtest-universe --strategy-path /path/to/your_strategy --universe config/backtest_universe.json
 ```
 
 **Key flags:**
@@ -101,6 +95,18 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 - `--worker-count N` — parallel Docker containers (default from config or env)
 - `--resume` — resume from checkpoint (skips completed stages)
 - `--skip-compile` — skip strategy compilation (use cached artifacts)
+
+### Batch Backtesting
+
+A batch backtest runner is included as a subcommand for running portfolio-wide or multi-symbol backtests independently of the optimization pipeline. It uses the same warm worker pool and persistent harness as the optimizer.
+
+```bash
+# Single symbol, explicit parameters
+python main.py backtest --strategy-path /path/to/your_strategy --param ticker=AAPL --param startDate=20250101 --param endDate=20251231
+
+# Multi-symbol backtests from a universe config
+python main.py backtest-universe --strategy-path /path/to/your_strategy --universe config/backtest_universe.json
+```
 
 ## Configuration
 
