@@ -1,6 +1,6 @@
 # lean-optimizer — Parallel Optimization Engine for QuantConnect LEAN
 
-Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline. 153 passing tests.
+Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline — reducing a 679,140-point parameter search from ~88 hours to under 3 minutes. 177 passing tests.
 
 ## Performance
 
