@@ -25,14 +25,15 @@ Combined: what takes LEAN CLI's grid search an estimated **~88 hours** completes
 
 ## Architecture
 
-The pipeline searches the parameter space via a configurable sequence of stages, all sharing a common `BatchRunner` interface and deduplication cache:
+The default configuration uses a **standalone incremental genetic algorithm** — the same search strategy benchmarked above. The GA uses tournament selection, worst-replacement, and early stopping, converging on an optimum without exhaustive evaluation.
 
-1. **Latin Hypercube Sampling (LHS)** — space-filling initial exploration (default 150 samples)
-2. **Bayesian Optimization (Optuna TPE)** — directed search with batch ask/tell (default 250 trials)
-3. **Incremental Genetic Algorithm** — population-based refinement with worst replacement and early stopping
-4. **Local Grid Search** — Chebyshev-distance neighborhood refinement around top candidates
+Additional pipeline stages are available and can be enabled independently via config:
 
-Stages can be enabled/disabled independently. GA can run standalone or seeded from prior stages.
+- **Latin Hypercube Sampling (LHS)** — space-filling initial exploration
+- **Bayesian Optimization (Optuna TPE)** — directed search with batch ask/tell
+- **Local Grid Search** — Chebyshev-distance neighborhood refinement around top candidates
+
+All stages share a common `BatchRunner` interface and deduplication cache. The GA can also run seeded from prior stages (LHS/Bayesian results injected into the initial population).
 
 Walk-forward optimization (true IS/OOS parameter validation) is a planned future stage. The current pipeline produces optimized parameters with checkpoint/resume support; out-of-sample validation is left to the user's preferred methodology.
 
@@ -108,23 +109,19 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 | Key | Default | Controls |
 |-----|---------|----------|
 | `fitness.name` | `"calmar"` | Fitness function (registry lookup) |
-| `fitness.min_trades` | `100` | Minimum trade count for valid score |
+| `fitness.min_trades` | `10` | Minimum trade count for valid score |
 | `fitness.min_profit_factor` | `1.0` | Minimum profit factor for valid score |
-| `stages.lhs.n_samples` | `150` | Number of LHS exploration points |
-| `stages.bayesian.n_calls` | `250` | Total Bayesian optimization trials |
-| `stages.bayesian.batch_size` | `15` | Concurrent trials per Bayesian batch |
-| `stages.genetic_*.population_size` | `125` | GA population size |
-| `stages.genetic_*.n_generations` | `73` | Max GA generations |
-| `stages.genetic_*.batch_size` | `15` | Children generated per GA generation |
-| `stages.genetic_*.early_stopping_generations` | `15` | Plateau window for early stop |
-| `stages.genetic_*.early_stopping_min_delta` | `0.01` | Min improvement to avoid early stop |
-| `stages.genetic_*.crossover_prob` | `0.95` | Crossover probability |
-| `stages.genetic_*.mutation_prob` | `0.05` | Per-parameter mutation probability |
-| `stages.genetic_*.tournament_size` | `3` | Tournament selection pool size |
-| `stages.local_grid.top_n` | `5` | Candidates for neighborhood search |
-| `stages.local_grid.radius` | `1` | Chebyshev radius in grid steps |
-| `stages.local_grid.max_neighbors` | `200` | Cap on neighbor evaluations |
+| `stages.genetic_standalone.population_size` | `125` | GA population size |
+| `stages.genetic_standalone.n_generations` | `73` | Max GA generations |
+| `stages.genetic_standalone.batch_size` | `15` | Children evaluated per GA generation |
+| `stages.genetic_standalone.early_stopping_generations` | `15` | Plateau window for early stop |
+| `stages.genetic_standalone.early_stopping_min_delta` | `0.01` | Min improvement to avoid early stop |
+| `stages.genetic_standalone.crossover_prob` | `0.95` | Crossover probability |
+| `stages.genetic_standalone.mutation_prob` | `0.05` | Per-parameter mutation probability |
+| `stages.genetic_standalone.tournament_size` | `3` | Tournament selection pool size |
 | `worker_count` | `15` | Parallel Docker worker containers |
+
+Additional stage config keys (when enabled): `stages.lhs.n_samples`, `stages.bayesian.n_calls`, `stages.bayesian.batch_size`, `stages.local_grid.top_n`, `stages.local_grid.radius`, `stages.local_grid.max_neighbors`.
 
 **`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation.
 
