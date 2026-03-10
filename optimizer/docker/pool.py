@@ -77,9 +77,15 @@ class WorkerPool:
     # Worker acquisition / release
     # ------------------------------------------------------------------
 
-    def acquire(self) -> Worker:
+    def acquire(self, timeout: float = 300) -> Worker:
         """Block until an idle worker is available and return it."""
-        worker = self._queue.get()
+        try:
+            worker = self._queue.get(timeout=timeout)
+        except queue.Empty:
+            raise RuntimeError(
+                f"[pool] No worker available after {timeout}s — "
+                f"all {self._n} workers may be dead"
+            )
         logger.debug(f"[pool] Acquired {worker.worker_id}")
         return worker
 

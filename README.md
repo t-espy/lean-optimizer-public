@@ -226,4 +226,4 @@ MIT
 
 ## Disclaimer
 
-This software is for research and educational purposes. It is not financial advice. Use in live trading is at your own risk.
+This software is for research and educational purposes. It is not financial advice. Use in live trading is at your own risk.  Benchmark results reflect specific hardware and configuration conditions. Performance will vary. The author is not liable for any losses or damages arising from the use of this software.

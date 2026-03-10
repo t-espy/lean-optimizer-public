@@ -6,6 +6,7 @@ Saves a JSON checkpoint after each stage completes, enabling:
 """
 
 import json
+import os
 from pathlib import Path
 
 from loguru import logger
@@ -33,7 +34,7 @@ def save_checkpoint(
 
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2))
-    tmp.rename(path)
+    os.replace(tmp, path)
 
     total = sum(len(evs) for evs in stage_results.values())
     logger.info(

@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from uuid import uuid4
 
@@ -53,7 +53,13 @@ def run_batch(
         return ev
 
     with ThreadPoolExecutor(max_workers=pool.size) as executor:
-        futures = [executor.submit(run_one, params) for params in parameter_sets]
-        evaluations = [f.result() for f in futures]
+        future_to_idx = {
+            executor.submit(run_one, params): i
+            for i, params in enumerate(parameter_sets)
+        }
+        evaluations = [None] * len(parameter_sets)
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            evaluations[idx] = future.result()
 
     return evaluations

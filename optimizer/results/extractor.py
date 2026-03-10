@@ -116,7 +116,7 @@ def extract(data: dict) -> Optional[ExtractedMetrics]:
 
         # profit_factor = (win_rate × avg_win) / ((1 − win_rate) × |avg_loss|)
         loss_rate = 1.0 - win_rate
-        if loss_rate == 0.0 or avg_loss == 0.0:
+        if loss_rate < 1e-9 or avg_loss < 1e-9:
             profit_factor = float("inf") if win_rate > 0.0 else 0.0
         else:
             profit_factor = (win_rate * avg_win) / (loss_rate * avg_loss)
