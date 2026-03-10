@@ -223,3 +223,7 @@ Strategy DLLs and harness compile with `Configuration=Release`. JIT cost is amor
 ## License
 
 MIT
+
+## Disclaimer
+
+This software is for research and educational purposes. It is not financial advice. Use in live trading is at your own risk.
