@@ -1,6 +1,6 @@
 # lean-optimizer — Parallel Optimization Engine for QuantConnect LEAN
 
-Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline — reducing a 679,140-point parameter search from ~88 hours to under 3 minutes. 177 passing tests.
+Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline — reducing a 679,140-point parameter search from ~88 hours to under 3 minutes. 130 passing tests.
 
 ## Performance
 
@@ -123,7 +123,7 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 | Key | Default | Controls |
 |-----|---------|----------|
 | `fitness.name` | `"calmar"` | Fitness function (registry lookup) |
-| `fitness.min_trades` | `10` | Minimum trade count for valid score |
+| `fitness.min_trades` | `10` | Minimum trade count for valid score (example value — raise for production use to avoid small-sample bias) |
 | `fitness.min_profit_factor` | `1.0` | Minimum profit factor for valid score |
 | `stages.genetic_standalone.population_size` | `125` | GA population size |
 | `stages.genetic_standalone.n_generations` | `73` | Max GA generations |
@@ -227,7 +227,7 @@ optimizer/config/config_builder.py       Merge base LEAN config with per-eval pa
 
 scripts/ga_early_stop_analysis.py        GA convergence analysis: identify peak generation + plateau
 
-tests/                                   153 passing tests covering all modules
+tests/                                   130 passing tests covering all modules
 ```
 
 ## Development Notes
