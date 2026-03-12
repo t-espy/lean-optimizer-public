@@ -137,7 +137,27 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 
 Additional stage config keys (when enabled): `stages.lhs.n_samples`, `stages.bayesian.n_calls`, `stages.bayesian.batch_size`, `stages.local_grid.top_n`, `stages.local_grid.radius`, `stages.local_grid.max_neighbors`.
 
-**`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation. **The included parameter space is a placeholder example (3 generic parameters, 180 combinations).** You must replace it with parameters that match your strategy's actual `GetParameter()` calls — otherwise the optimizer will run but the parameters won't affect backtest behavior, and results will be meaningless.
+**`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation.
+
+**The included parameter space is a placeholder example** (3 generic parameters, 180 combinations). You must replace it with parameters that match your strategy's actual `GetParameter()` calls — otherwise the optimizer will run but the parameters won't affect backtest behavior, and results will be meaningless. Each entry's `name` must exactly match a `GetParameter()` key in your C# strategy:
+
+```csharp
+// In your strategy's Initialize():
+var lookback = GetParameter("MyLookback", 20);  // ← name must match
+var threshold = GetParameter("MyThreshold", 0.5);
+```
+
+```json
+// In parameter_space.json:
+{
+  "parameters": [
+    { "name": "MyLookback", "min": 10, "max": 50, "step": 5, "type": "int" },
+    { "name": "MyThreshold", "min": 0.1, "max": 0.9, "step": 0.1, "type": "float" }
+  ]
+}
+```
+
+The optimizer passes these values via the LEAN config's `parameters` block. If a `name` doesn't match any `GetParameter()` call, LEAN silently ignores it and your strategy uses its hardcoded default.
 
 **Environment variables:** `LEAN_IMAGE`, `LEAN_DATA_HOST_PATH`, `LEAN_WORKSPACE`, `ARTIFACTS_CONTAINER_PATH`, `RESULTS_SCRATCH_PATH`, `WORKER_COUNT`. See `.env.example`.
 
