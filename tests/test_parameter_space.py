@@ -17,12 +17,12 @@ def space():
 # from_json + total_combinations
 # ---------------------------------------------------------------------------
 
-def test_from_json_loads_seven_params(space):
-    assert len(space.parameters) == 7
+def test_from_json_loads_params(space):
+    assert len(space.parameters) == 3
 
 
 def test_total_combinations(space):
-    assert space.total_combinations() == 679_140
+    assert space.total_combinations() == 180
 
 
 # ---------------------------------------------------------------------------

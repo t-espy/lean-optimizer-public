@@ -180,6 +180,14 @@ def compile(strategy_path: Path, skip: bool = False) -> Path:
     if not built_dlls:
         raise RuntimeError(f"Build reported success but no DLL found in {artifact_dir}")
 
+    # Fix ownership — Docker runs as root, so artifacts are root-owned
+    uid, gid = os.getuid(), os.getgid()
+    for f in artifact_dir.iterdir():
+        try:
+            os.chown(f, uid, gid)
+        except OSError:
+            pass
+
     logger.success(f"[compiler] Build succeeded → artifacts/{hash_prefix}/ ({built_dlls[0].name})")
     return artifact_dir.resolve()
 
