@@ -57,7 +57,12 @@ Harness → Python stdout: {"id": "<uuid>", "status": "complete"}
   - Clone this repo so the relative path resolves to your LEAN install, **or**
   - Edit every `HintPath` in the `.csproj` to point to your LEAN DLL location, **or**
   - Create a symlink: `ln -s /path/to/your/LeanCode /path/to/lean-optimizer/../LeanCode`
-- **Market data** — LEAN-format data on a fast filesystem. A tmpfs/RAM disk is strongly recommended for parallel workloads. Set `LEAN_DATA_HOST_PATH` in `.env`.
+- **Market data** — LEAN-format data on a fast filesystem. A tmpfs/RAM disk is strongly recommended for parallel workloads. Set `LEAN_DATA_HOST_PATH` in `.env`. **This directory must contain both your historical price data AND LEAN's reference data files.** LEAN requires several infrastructure files at runtime — without them, backtests will silently produce empty results. At minimum, copy these from your LEAN source (`Lean/Data/`):
+  ```
+  symbol-properties/symbol-properties-database.csv
+  market-hours/market-hours-database.json
+  ```
+  The safest approach is to copy the entire `Lean/Data/` tree to your data path and then add your price data under `equity/usa/minute/` (or the appropriate resolution/market). If you use a tmpfs/RAM disk, remember that **its contents are lost on reboot or crash** — you will need to repopulate it.
 - **A C# strategy project** — a directory containing `.cs` and `.csproj` files that compile against QuantConnect. Pass via `--strategy-path`.
 - **Python 3.12+**
 - **.NET 8.0+** — for compiling the harness and your strategy
@@ -113,7 +118,7 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 
 ## Configuration
 
-**`config/optimization_ga.json`** — optimization config:
+**`config/optimization_ga.json`** — optimization config. The included file has example `base_params` (dates, cash, etc.) that you should adjust for your strategy and data range:
 
 | Key | Default | Controls |
 |-----|---------|----------|
@@ -132,7 +137,7 @@ python main.py backtest-universe --strategy-path /path/to/your_strategy --univer
 
 Additional stage config keys (when enabled): `stages.lhs.n_samples`, `stages.bayesian.n_calls`, `stages.bayesian.batch_size`, `stages.local_grid.top_n`, `stages.local_grid.radius`, `stages.local_grid.max_neighbors`.
 
-**`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation.
+**`config/parameter_space.json`** — defines tunable parameters with min, max, step, and type (int/float). The optimizer generates all valid grid points and uses them for LHS, GA mutation, and local grid neighbor generation. **The included parameter space is a placeholder example (3 generic parameters, 180 combinations).** You must replace it with parameters that match your strategy's actual `GetParameter()` calls — otherwise the optimizer will run but the parameters won't affect backtest behavior, and results will be meaningless.
 
 **Environment variables:** `LEAN_IMAGE`, `LEAN_DATA_HOST_PATH`, `LEAN_WORKSPACE`, `ARTIFACTS_CONTAINER_PATH`, `RESULTS_SCRATCH_PATH`, `WORKER_COUNT`. See `.env.example`.
 
@@ -148,7 +153,7 @@ These constraints are load-bearing. Respect them when extending.
 
 4. **Harness protocol.** Python → harness stdin: `{"id": "<uuid>", "config_path": "/path/to/config.json"}`. Harness → Python stdout: `{"id": "<uuid>", "status": "complete"}` or `{"id": "<uuid>", "status": "error", "message": "..."}`. `Console.Out` is redirected to stderr inside the harness so LEAN logging doesn't corrupt the JSON protocol. On eval error, the harness logs the error and continues the loop — it does not exit. On stdin EOF, the harness exits cleanly.
 
-5. **RAM drive.** Market data should live on a fast filesystem (tmpfs recommended). LEAN containers mount this read-only. Never copy data into containers.
+5. **RAM drive.** Market data should live on a fast filesystem (tmpfs recommended). LEAN containers mount this read-only. Never copy data into containers. The data directory must include LEAN's reference data (`symbol-properties/`, `market-hours/`, etc.) alongside your price data — LEAN will fail silently without them. tmpfs is volatile: contents are lost on reboot/crash.
 
 6. **Injected stages.** All pipeline stages implement `OptimizationStage` (see `optimizer/pipeline/base.py`). Stages receive a `BatchRunner` callable — they never touch Docker, workers, or compilation directly. New stages just implement `run(space, fitness_fn, batch_runner, previous_results)`.
 
