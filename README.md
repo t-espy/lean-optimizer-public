@@ -173,7 +173,6 @@ harness/LeanHarness/LeanHarness.csproj   Harness project file, references pre-bu
 
 optimizer/fitness/base.py                Abstract FitnessFunction base class with score/compute
 optimizer/fitness/calmar.py              Calmar fitness: (net_pnl / max_drawdown) * log-trade penalty
-optimizer/fitness/trailing_stop.py       TrailingStop fitness: MFE efficiency + TS activity + ES penalty
 optimizer/fitness/registry.py            String-name -> fitness-class registry
 
 optimizer/pipeline/base.py               OptimizationStage ABC + BatchRunner protocol

@@ -2,11 +2,9 @@ from typing import Dict, Type
 
 from optimizer.fitness.base import FitnessFunction
 from optimizer.fitness.calmar import CalmarFitness
-from optimizer.fitness.trailing_stop import TrailingStopFitness
 
 FITNESS_REGISTRY: Dict[str, Type[FitnessFunction]] = {
     "calmar": CalmarFitness,
-    "trailing_stop": TrailingStopFitness,
 }
 
 

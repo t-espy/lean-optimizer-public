@@ -184,32 +184,6 @@ def _print_optimize_summary(
         print(f"    params={pipeline_result.best_evaluation.parameters}")
         print(f"    stage={pipeline_result.best_evaluation.stage}")
 
-    # Quarterly Performance Breakdown (best candidate)
-    best = pipeline_result.best_evaluation
-    if best is not None and best.extracted_metrics:
-        trades = best.extracted_metrics.get("trades", [])
-        if trades:
-            from optimizer.fitness.trailing_stop import _bucket_by_quarter, _base_score
-
-            quarters = _bucket_by_quarter(trades)
-            if quarters:
-                print(f"\n  {'─'*60}")
-                print("  Quarterly Performance Breakdown")
-                print(f"  {'─'*60}")
-                print(f"  {'Quarter':>10}  {'Trades':>8}  {'Net PnL':>10}  {'PF':>8}  {'Fitness':>10}")
-                print("  " + "─" * 52)
-
-                for q_key in sorted(quarters.keys()):
-                    q_trades = quarters[q_key]
-                    n = len(q_trades)
-                    net_pnl = sum(t.get("profit", 0) for t in q_trades)
-                    gross_profit = sum(t.get("profit", 0) for t in q_trades if t.get("profit", 0) > 0)
-                    gross_loss = abs(sum(t.get("profit", 0) for t in q_trades if t.get("profit", 0) < 0))
-                    pf = gross_profit / gross_loss if gross_loss > 0 else float("inf")
-                    score = _base_score(q_trades, min_trades)
-                    pf_str = f"{pf:.2f}" if pf != float("inf") else "inf"
-                    print(f"  {q_key:>10}  {n:>8}  {net_pnl:>10.2f}  {pf_str:>8}  {score:>10.4f}")
-
     print(f"\n  Wall time: {wall_seconds:.1f}s")
     print(f"  Total evaluations: {len(pipeline_result.all_evaluations)}")
     print(f"{'='*70}\n")
