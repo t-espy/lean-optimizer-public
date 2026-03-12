@@ -13,7 +13,7 @@
   "fitness": {
     "name": "calmar",
     "min_trades": 10,
-    "min_profit_factor": 1.0
+    "min_profit_factor": 0.5
   },
   "stages": {
     "genetic_standalone": {
