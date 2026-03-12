@@ -53,7 +53,10 @@ Harness → Python stdout: {"id": "<uuid>", "status": "complete"}
 **Infrastructure you provide:**
 
 - **Docker** with a LEAN engine image (e.g., `quantconnect/lean:latest` or a custom build). Set `LEAN_IMAGE` in `.env`.
-- **QuantConnect LEAN source** — a local clone with pre-built DLLs. The harness `.csproj` references LEAN DLLs via relative path (`../../../LeanCode/Lean/Launcher/bin/Debug/`). Adjust the `HintPath` entries in `harness/LeanHarness/LeanHarness.csproj` to match your LEAN install location.
+- **QuantConnect LEAN source** — a local clone with pre-built DLLs. **The harness build will fail if this is not configured correctly.** The `.csproj` at `harness/LeanHarness/LeanHarness.csproj` references LEAN DLLs via relative `HintPath` entries (default: `../../../LeanCode/Lean/Launcher/bin/Debug/`). You must either:
+  - Clone this repo so the relative path resolves to your LEAN install, **or**
+  - Edit every `HintPath` in the `.csproj` to point to your LEAN DLL location, **or**
+  - Create a symlink: `ln -s /path/to/your/LeanCode /path/to/lean-optimizer/../LeanCode`
 - **Market data** — LEAN-format data on a fast filesystem. A tmpfs/RAM disk is strongly recommended for parallel workloads. Set `LEAN_DATA_HOST_PATH` in `.env`.
 - **A C# strategy project** — a directory containing `.cs` and `.csproj` files that compile against QuantConnect. Pass via `--strategy-path`.
 - **Python 3.12+**
