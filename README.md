@@ -2,6 +2,50 @@
 
 Production-grade parallel optimization engine for QuantConnect LEAN algorithmic trading strategies. Compiles a C# strategy once, spins up a pool of warm Docker containers with persistent .NET harness processes, and searches the parameter space via a multi-stage pipeline — reducing a 679,140-point parameter search from ~88 hours to under 3 minutes. 130 passing tests.
 
+## Context
+
+This engine is a **self-contained slice** extracted from a larger private
+research-to-live trading platform. The optimization core published here runs on its
+own; the full system it was factored out of covers the complete path from raw data to
+deployed capital:
+
+- **Ingestion** — a single-source market-data pipeline (broker historical bars) into a
+  LEAN-format store.
+- **Optimization** — this engine.
+- **Credibility validation** — walk-forward optimization plus a process-validation
+  framework (out-of-sample distribution tests, block-bootstrap confidence intervals,
+  deflated Sharpe, probability of backtest overfitting) that gates whether a strategy is
+  trustworthy enough to risk capital on.
+- **Portfolio construction** — correlation-aware selection with forward-realistic
+  return and drawdown expectation bands.
+- **Deployment** — manually-approved live execution against a broker, with per-sleeve
+  circuit breakers and a stored-fill reconciliation ledger.
+
+That private system is backed by **40 architecture decision records and 2,258 tests**,
+a service-based research orchestrator, and a bounded LLM-guided research steward. This
+repo isolates the piece most useful on its own — the parallel optimization engine — so
+it can be read, run, and evaluated without the surrounding infrastructure.
+
+## What this demonstrates
+
+For readers evaluating the engineering rather than running it:
+
+- **Parallel systems & orchestration** — a warm pool of long-lived Docker workers
+  acquired and released through a blocking queue, with no per-evaluation container churn.
+- **Cross-language protocol design** — a persistent .NET (C#) harness driven from Python
+  over a stdin/stdout JSON protocol, with stream isolation so LEAN's own logging cannot
+  corrupt the channel, and a full engine-state reset between runs.
+- **Performance engineering** — two independent, compounding wins: compile-once
+  content-hash caching plus a persistent harness (~1.8× worker throughput), and a smart
+  search that converges in 611 evaluations instead of 679,140 (~1,112× fewer).
+- **Optimization algorithms** — incremental (worst-replacement) genetic search, Latin
+  Hypercube sampling, Bayesian TPE, and local-grid refinement behind one pluggable stage
+  interface sharing a deduplication cache.
+- **Extensible architecture** — stages and fitness functions are injected via registries
+  and never touch Docker or compilation directly; adding one is a subclass.
+- **Engineering discipline** — 130 tests, atomic checkpoint/resume, per-evaluation JSONL
+  audit logging, and explicitly documented load-bearing design constraints.
+
 ## Performance
 
 Measured on a 7-parameter space (679,140 grid points), 15 parallel workers, 20-core machine. Both runs use the same strategy, parameter ranges, date range, and data.
@@ -25,6 +69,29 @@ Combined: what takes LEAN CLI's grid search an estimated **~88 hours** completes
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    CLI["main.py CLI"] --> COMPILE["Compiler<br/>content-hash cache"]
+    COMPILE --> POOL["WorkerPool<br/>N warm containers"]
+    subgraph PIPE["Optimization Pipeline (pluggable stages)"]
+      direction TB
+      LHS["LHS"] --> BAYES["Bayesian TPE"] --> GA["Incremental GA"] --> GRID["Local Grid"]
+    end
+    PIPE -->|param batches| RUNNER["BatchRunner<br/>ThreadPoolExecutor"]
+    RUNNER --> POOL
+    POOL --> HARNESS["Persistent LEAN harness<br/>stdin/stdout JSON, state reset"]
+    HARNESS --> LEAN["LEAN engine"]
+    LEAN --> EXTRACT["Result extractor"]
+    EXTRACT --> FIT["Fitness registry<br/>(e.g. Calmar)"]
+    FIT -->|scores| PIPE
+    PIPE --> CKPT[("Checkpoint +<br/>per-eval JSONL")]
+```
+
+The pipeline proposes parameter batches; the `BatchRunner` fans them across the warm
+worker pool; each worker's persistent harness runs a LEAN backtest and returns metrics;
+the fitness registry scores them and feeds the result back into the search — with an
+atomic checkpoint written after every stage.
+
 The default configuration uses a **standalone incremental genetic algorithm** — the same search strategy benchmarked above. The GA uses tournament selection, worst-replacement, and early stopping, converging on an optimum without exhaustive evaluation.
 
 Additional pipeline stages are available and can be enabled independently via config:
@@ -47,6 +114,10 @@ Harness → Python stdout: {"id": "<uuid>", "status": "complete"}
 ```
 
 `Console.Out` is redirected to stderr inside the harness so LEAN logging doesn't corrupt the JSON protocol. On eval error, the harness logs the error and continues — it does not exit. On stdin EOF, it exits cleanly.
+
+---
+
+_Everything below is operator documentation — infrastructure prerequisites, setup, CLI usage, and configuration. Skip it if you're here to read the design._
 
 ## Requirements
 
